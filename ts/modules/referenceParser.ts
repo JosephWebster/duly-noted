@@ -4,7 +4,10 @@
  * @license
  *
  * This code parse files, build maps of each the code file, 
- * as well as collections of internal and external references.
+ * as well as collections of internal and external references. 
+ * Examples below:
+ *  * Example Code Map: @ReferenceParser/example-output/code-map
+ *  * Example Reference Map: @ReferenceParser/example-output/reference-collection
  * 
  * These files are typically deleted at the end of the @Index/run 
  * process, however, you can leave them by setting `leaveJSONFiles = true`
@@ -12,79 +15,6 @@
  * 
  * These files are ouput at @ReferenceParser/constants/parseLoc .
  *  
- * ### Example output JSON file for references
- * ```json
- *  {
- *   "id": "duly-noted",
- *   "anchors": [
- *        {
- *            "id": "license",
- *            "line": 1,
- *            "file": "./license.md"
- *        },
- *        ...
- *    ],
- *    "subcollections": [
- *        {
- *            "id": "Index",
- *            "anchors": [
- *                {
- *                    "id": "main",
- *                    "line": 0,
- *                    "file": "./ts/index.ts"
- *                },
- *                {
- *                    "id": "run",
- *                    "line": 21,
- *                    "file": "./ts/index.ts"
- *                },
- *                {
- *                    "id": "getFiles",
- *                    "line": 162,
- *                    "file": "./ts/index.ts"
- *                },
- *                {
- *                    "id": "deleteDir",
- *                    "line": 175,
- *                    "file": "./ts/index.ts"
- *                }
- *            ],
- *            "subcollections": []
- *        },
- *        ...
- *    }
- * ```
- * 
- * ## Example Output JSON map for code file.
- * ```json
- * {
- *    "name": "./ts/index.ts",
- *    "lines": [
- *        ...
- *        {
- *            "number": 5,
- *            "longComment": true,
- *            "comment": "This is the entry file to Duly Noted, "
- *        },
- *        {
- *            "number": 6,
- *            "longComment": true,
- *            "comment": "it contains function that launches from the Command Line"
- *        },
- *        {
- *            "number": 7,
- *            "longComment": true,
- *            "comment": ""
- *        },
- *        {
- *            "number": 8,
- *            "code": "import {IConfig} from \"./classes/IConfig\";"
- *        },
- *        ...
- *    ]
- * }
- *
- * ```
  */
 
 import {IReferenceCollection, IAnchor, ReferenceCollection} from "../classes/referenceCollection";
@@ -106,7 +36,7 @@ let logger = log4js.getLogger("duly-noted::ReferenceParser");
  * ## Interface for ReferenceParser
  */
 export interface IReferenceParser {
-    parse(): Q.Promise<IReferenceCollection>;
+    parse(files: string[]): Q.Promise<IReferenceCollection>;
 }
 
 /** !ReferenceParser/constants/parseLoc
@@ -118,7 +48,6 @@ export const parseLoc = "duly-noted";
  * ## Reference Parser Class
  */
 export class ReferenceParser implements IReferenceParser {
-    files: string[];
     rootCollection: IReferenceCollection;
     anchorRegExp: RegExp;
     commentPatterns: {}[];
@@ -128,7 +57,6 @@ export class ReferenceParser implements IReferenceParser {
      * ### Creates an instance of @ReferenceParser/class
      */
     constructor(config: IConfig, logLevel?: string) {
-        this.files = config.files;
         this.rootCollection = new ReferenceCollection(parseLoc, logLevel);
         this.anchorRegExp = new RegExp(config.anchorRegExp);
 
@@ -144,10 +72,10 @@ export class ReferenceParser implements IReferenceParser {
      * ## Parse 
      * Parser all files for anchors - produce a @interfaces/IReferenceCollection
      */
-    public parse(): Q.Promise<IReferenceCollection> {
+    public parse(files: string[]): Q.Promise<IReferenceCollection> {
         let that = this;
         return Q.Promise<IReferenceCollection>((resolve, reject) => {
-            logger.info("Starting parse actions for " + that.files.length + " files.");
+            logger.info("Starting parse actions for " + files.length + " files.");
 
             /** 
              *  Build a collection of parse actions. 
@@ -156,13 +84,13 @@ export class ReferenceParser implements IReferenceParser {
              *  * Otherwise pass to @ReferenceParser/parseFile 
              */
             let parseActions = [];
-            for (let i = 0; i < that.files.length; i++) {
-                let fileName = that.files[i].split(".");
+            for (let i = 0; i < files.length; i++) {
+                let fileName = files[i].split(".");
                 let extension = fileName[fileName.length - 1];
                 if (extension === "md") {
-                    parseActions.push(that.parseAsMarkdown(that.files[i]));
+                    parseActions.push(that.parseAsMarkdown(files[i]));
                 } else {
-                    parseActions.push(that.parseFile(that.files[i]));
+                    parseActions.push(that.parseFile(files[i]));
                 }
             }
 
@@ -173,6 +101,10 @@ export class ReferenceParser implements IReferenceParser {
                 writeFileSync(path.join(parseLoc, "internalReferences.json"), JSON.stringify(that.rootCollection), { flag: "w" });
                 writeFileSync(path.join(parseLoc, "externalReferences.json"), JSON.stringify(that.externalReferences), { flag: "w" });
                 resolve(that.rootCollection);
+            })
+            .catch((err) => {
+                logger.error(err.message + err.stack);
+                reject(err);
             });
         });
     }
@@ -209,6 +141,7 @@ export class ReferenceParser implements IReferenceParser {
                         })
                         .catch((err) => {
                             logger.fatal(err.message);
+                            reject(err);
                         });
                     }
                 });
@@ -264,8 +197,7 @@ export class ReferenceParser implements IReferenceParser {
                 longCommentCloseRegExp = new RegExp(that.commentPatterns["default"]["longCommentCloseRegExp"]);
             }
 
-            // Line numbering traditionally starts at 1 (not 0)
-            let lineNumber = 1;
+            let lineNumber = 0;
             // Read each line of the file.
             lineReader.eachLine(fileName, (line, last) => {
 
@@ -307,6 +239,7 @@ export class ReferenceParser implements IReferenceParser {
                                     })
                                     .catch((err) => {
                                         logger.fatal(err.message);
+                                        reject(err);
                                     });
                                 }
                             });
@@ -321,6 +254,7 @@ export class ReferenceParser implements IReferenceParser {
                             })
                             .catch((err) => {
                                 logger.fatal(err.message);
+                                reject(err);
                             });
                         }
                     }
@@ -356,6 +290,7 @@ export class ReferenceParser implements IReferenceParser {
                                 })
                                 .catch((err) => {
                                     logger.fatal(err.message);
+                                    reject(err);
                                 });
                         }
                     });
@@ -369,6 +304,7 @@ export class ReferenceParser implements IReferenceParser {
                         })
                         .catch((err) => {
                             logger.fatal(err.message);
+                            reject(err);
                         });
                     }
                 }
@@ -428,3 +364,80 @@ export class ReferenceParser implements IReferenceParser {
         });
     };
 }
+
+ /** !ReferenceParser/example-output/reference-collection
+ * ### Example output JSON file for references
+ * ```json
+ *  {
+ *   "id": "duly-noted",
+ *   "anchors": [
+ *        {
+ *            "id": "license",
+ *            "line": 1,
+ *            "file": "./license.md"
+ *        },
+ *        ...
+ *    ],
+ *    "subcollections": [
+ *        {
+ *            "id": "Index",
+ *            "anchors": [
+ *                {
+ *                    "id": "main",
+ *                    "line": 0,
+ *                    "file": "./ts/index.ts"
+ *                },
+ *                {
+ *                    "id": "run",
+ *                    "line": 21,
+ *                    "file": "./ts/index.ts"
+ *                },
+ *                {
+ *                    "id": "getFiles",
+ *                    "line": 162,
+ *                    "file": "./ts/index.ts"
+ *                },
+ *                {
+ *                    "id": "deleteDir",
+ *                    "line": 175,
+ *                    "file": "./ts/index.ts"
+ *                }
+ *            ],
+ *            "subcollections": []
+ *        },
+ *        ...
+ *    }
+ * ```
+ * 
+ * !ReferenceParser/example-output/code-map
+ * ## Example Output JSON map for code file.
+ * ```json
+ * {
+ *    "name": "./ts/index.ts",
+ *    "lines": [
+ *        ...
+ *        {
+ *            "number": 5,
+ *            "longComment": true,
+ *            "comment": "This is the entry file to Duly Noted, "
+ *        },
+ *        {
+ *            "number": 6,
+ *            "longComment": true,
+ *            "comment": "it contains function that launches from the Command Line"
+ *        },
+ *        {
+ *            "number": 7,
+ *            "longComment": true,
+ *            "comment": ""
+ *        },
+ *        {
+ *            "number": 8,
+ *            "code": "import {IConfig} from \"./classes/IConfig\";"
+ *        },
+ *        ...
+ *    ]
+ * }
+ *
+ * ```
+ */

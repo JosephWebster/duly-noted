@@ -1,3 +1,11 @@
+/** !helpers/q-helpers
+ * # Q Promise Helpers
+ * 
+ * @authors/chris
+ * @license
+ * 
+ * See @so/17213297
+ */
 import Q = require("q");
 
 export function doNext(fn) {

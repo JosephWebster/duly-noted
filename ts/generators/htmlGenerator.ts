@@ -1,15 +1,18 @@
-/**
- * # !HtmlGenerator
- *  @authors/chris
- *  @license
+/** !HtmlGenerator/main
+ * # HtmlGenerator
+ * @authors/chris
+ * @license
  * 
- *  Generates HTML pages for the source code, 
- *  replacing links and anchors as it goes along. 
- *  Builds a nice Index.html page with info and 
- *  README.md content. 
+ * Generates HTML pages for the source code, 
+ * replacing links and anchors as it goes along. 
+ * Builds a nice Index.html page with info and 
+ * README.md content. 
  * 
- *  Uses tempalate that employ handlebars as the 
- *  templating engine.
+ * This is a generator that takes the reference maps produced by
+ * @ReferenceParser/parse and turns them into nice markdown documentation files.
+ * 
+ * > Note this Uses tempalates that employ handlebars as the 
+ * templating engine.
  * 
  */
 
@@ -37,8 +40,8 @@ export interface IHtmlGenerator {
 
 }
 
-/**
- * ## !classes/HtmlGenerator
+/** !HtmlGenerator/class
+ * ## Html Generator Class
  */
 export class HtmlGenerator implements IHtmlGenerator {
     outputDir: string;
@@ -54,8 +57,8 @@ export class HtmlGenerator implements IHtmlGenerator {
     readme: string;
     projectName: string;
 
-    /**
-     * ### Creates an instance of @classes/HtmlGenerator
+    /** !HtmlGenerator/constructor
+     * ### Creates an instance of @HtmlGenerator/class
      */
     constructor(config: IConfig, logLevel?: string) {
         logger.setLevel(logLevel || "DEBUG");
@@ -70,8 +73,8 @@ export class HtmlGenerator implements IHtmlGenerator {
         projectPathArray.pop();
         this.projectPath = projectPathArray.join("/");
 
-        this.template = handlebars.compile(readFileSync(path.join(this.projectPath, "templates", "stacked.html")).toString());
-        this.indexTemplate = handlebars.compile(readFileSync(path.join(this.projectPath, "templates", "index.html")).toString());
+        this.template = handlebars.compile(readFileSync(path.join(__dirname, "../../bin/templates", "stacked.html")).toString());
+        this.indexTemplate = handlebars.compile(readFileSync(path.join(__dirname, "../../bin/templates", "index.html")).toString());
 
         this.projectName = config.projectName;
         this.readme = config.readme;
@@ -81,9 +84,9 @@ export class HtmlGenerator implements IHtmlGenerator {
     }
 
 
-    /**
+    /** !HtmlGenerator/generate
      * ## Generate HTML Docs
-     * Creates HTML docs for a set of file maps and reference maps set on @classes/HtmlGenerator construction.
+     * Creates HTML docs for a set of file maps and reference maps set in @HtmlGenerator/constructor .
      */
     public generate(): Q.IPromise<{}> {
         return Q.Promise((resolve, reject) => {
@@ -101,10 +104,10 @@ export class HtmlGenerator implements IHtmlGenerator {
         });
     }
 
-    /**
+    /** !HtmlGenerator/processFiles
      * ## Process Files
      * Processes the file map for a file, making output decisions based on 
-     * code, comment, long comment presence 
+     * code, comment, long comment 
      */
     proccessFile(err: Error, content: string, next: Function, outputDir: string): void {
         let file: IFile = JSON.parse(content);
@@ -161,7 +164,7 @@ export class HtmlGenerator implements IHtmlGenerator {
         });
     }
 
-    /**
+    /** !HtmlGenerator/replaceAnchors
      * ## Replace Anchors
      * Processes a comment line, replacing anchors with markdown anchor link tags
      */
@@ -175,16 +178,20 @@ export class HtmlGenerator implements IHtmlGenerator {
             return comment;
         } else {
 
-            let anchor = match[1].replace("/", "-").toLowerCase();
+            let anchor = match[1].replace(/\//g, "-").toLowerCase();
             let replacementText = '<a name="' + anchor + '" id="' + anchor + '" ></a>';
-            replacementText += "[🔗](#" + anchor + ")" + match[1];
+            replacementText += "[🔗](#" + anchor + ")";
 
             comment = comment.replace(match[0], replacementText);
             return this.replaceAnchors(comment, fileName, line, pos + match[0].length);
         }
     }
 
-
+    /** !HtmlGenerator/replaceLinks
+     * ## Replace Links
+     * Processes a comment line, replacing links with markdown links. 
+     * This function calls itself recursively until all links are replaced.
+     */
     replaceLinks(comment: string, fileName: string, line: number, position?: number) {
         let pos = position || 0;
 
@@ -199,10 +206,14 @@ export class HtmlGenerator implements IHtmlGenerator {
 
             // Look external link.
             let tagArray = match[1].split("/");
-            let externalTag =  _.findWhere(this.externalReferences, {anchor: tagArray[0]});
+            let externalTag =  _.clone(_.findWhere(this.externalReferences, {anchor: tagArray[0]}));
             if (externalTag) {
-                logger.debug("found external link: " + match[1]);
-                let anchor = match[1].replace("/", "-").toLowerCase();
+                for (let i = 1; i < tagArray.length; i++) {
+                    externalTag.path = externalTag.path.replace("::", tagArray[i]);
+                }
+
+                logger.debug("found external link: " + externalTag.path);
+                let anchor = match[1].replace(/\//g, "-").toLowerCase();
                 comment = comment.replace(match[0], " [" + match[1] + "](" + externalTag.path + ") ");
                 return this.replaceLinks(comment, fileName, line, pos + match[0].length);
             }
@@ -214,17 +225,17 @@ export class HtmlGenerator implements IHtmlGenerator {
                 return comment;
             } else {
                 logger.debug("found internal link: " + match[1] + " " + internalTag.path);
-                let anchor = match[1].replace("/", "-").toLowerCase();
+                let anchor = match[1].replace(/\//g, "-").toLowerCase();
                 comment = comment.replace(match[0], " [" + match[1] + "](" + linkPrefix + internalTag.path + ".md#" + anchor + ")");
             }
             return this.replaceLinks(comment, fileName, line, pos + match[0].length);
         }
     }
 
-    /** 
+     /** !HtmlGenerator/generateIndexPage
      * ## Generates the "Index Page"
      * This generates the index page, listing all the link collections, 
-     * and sucks in the README. 
+     * and sucks in the user's defined README. 
      */
     generateIndexPage(): void {
         logger.info("generating index.html");
@@ -248,10 +259,10 @@ export class HtmlGenerator implements IHtmlGenerator {
             name = name.join("/");
 
             for (let x = 0; x < anchors.length; x++) {
-                let anchor = anchors[x].linkStub.replace("/", "-").toLowerCase();
+                let anchor = anchors[x].linkStub.replace(/\//g, "-").toLowerCase();
                 anchors[x].path = anchors[x].path + ".html#";
                 if (name !== "") {
-                    anchors[x].path += name.replace("/", "-").toLowerCase() + "-";
+                    anchors[x].path += name.replace(/\//g, "-").toLowerCase() + "-";
                 }
 
                 anchors[x].path += anchor;
@@ -284,7 +295,7 @@ export class HtmlGenerator implements IHtmlGenerator {
         });
     }
 
-    /**
+    /** !HtmlGenerator/getLinkPrefix
      * Generate a link Prefix from a fileName
      * > NOTE: Without this code, links will not properly navigated to deeply nested pages with relative linking.
      */
@@ -298,10 +309,18 @@ export class HtmlGenerator implements IHtmlGenerator {
         return linkPrefix;
     }
 
+    // ## Handlebars Template Helpers
+
+    /** HtmlGenerator/markdownHelper
+     * Handlebars Template helper - renders MD in template view.
+     */
     markdownHelper(context, options) {
        return marked(context);
     }
 
+    /** HtmlGenerator/ifCondHelper
+     * Handlebars Template helper - provides if confition logic for template view.
+     */
     ifCondHelper(v1, v2, options) {
         if (v1 === v2) {
             return options.fn(this);

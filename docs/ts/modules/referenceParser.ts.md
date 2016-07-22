@@ -5,87 +5,17 @@
  [license](../.././license.md.md#user-content-license)
 
 This code parse files, build maps of each the code file, 
-as well as collections of internal and external references.
+as well as collections of internal and external references. 
+Examples below:
+ * Example Code Map: [ReferenceParser/example-output/code-map](../.././ts/modules/referenceParser.ts.md#user-content-referenceparser-example-output-code-map)
+ * Example Reference Map: [ReferenceParser/example-output/reference-collection](../.././ts/modules/referenceParser.ts.md#user-content-referenceparser-example-output-reference-collection)
 
 These files are typically deleted at the end of the [Index/run](../.././ts/index.ts.md#user-content-index-run) 
 process, however, you can leave them by setting `leaveJSONFiles = true`
 in your 'duly-noted.json' file. 
 
-These files are ouput at [ReferenceParser/constants/parseLoc](../.././ts/modules/referenceParser.ts.md#user-content-referenceparser-constants/parseloc) .
+These files are ouput at [ReferenceParser/constants/parseLoc](../.././ts/modules/referenceParser.ts.md#user-content-referenceparser-constants-parseloc) .
  
-### Example output JSON file for references
-```json
- {
-  "id": "duly-noted",
-  "anchors": [
-       {
-           "id": "license",
-           "line": 1,
-           "file": "./license.md"
-       },
-       ...
-   ],
-   "subcollections": [
-       {
-           "id": "Index",
-           "anchors": [
-               {
-                   "id": "main",
-                   "line": 0,
-                   "file": "./ts/index.ts"
-               },
-               {
-                   "id": "run",
-                   "line": 21,
-                   "file": "./ts/index.ts"
-               },
-               {
-                   "id": "getFiles",
-                   "line": 162,
-                   "file": "./ts/index.ts"
-               },
-               {
-                   "id": "deleteDir",
-                   "line": 175,
-                   "file": "./ts/index.ts"
-               }
-           ],
-           "subcollections": []
-       },
-       ...
-   }
-```
-
-## Example Output JSON map for code file.
-```json
-{
-   "name": "./ts/index.ts",
-   "lines": [
-       ...
-       {
-           "number": 5,
-           "longComment": true,
-           "comment": "This is the entry file to Duly Noted, "
-       },
-       {
-           "number": 6,
-           "longComment": true,
-           "comment": "it contains function that launches from the Command Line"
-       },
-       {
-           "number": 7,
-           "longComment": true,
-           "comment": ""
-       },
-       {
-           "number": 8,
-           "code": "import {IConfig} from \"./classes/IConfig\";"
-       },
-       ...
-   ]
-}
-
-```
 
 ```typescript
 
@@ -110,11 +40,11 @@ let logger = log4js.getLogger("duly-noted::ReferenceParser");
 
 ```typescript
 export interface IReferenceParser {
-    parse(): Q.Promise<IReferenceCollection>;
+    parse(files: string[]): Q.Promise<IReferenceCollection>;
 }
 
 ```
- <a name="referenceparser-constants/parseloc" id="referenceparser-constants/parseloc" ></a>[🔗](#user-content-referenceparser-constants/parseloc)ReferenceParser/constants/parseLoc
+ <a name="referenceparser-constants-parseloc" id="referenceparser-constants-parseloc" ></a>[🔗](#user-content-referenceparser-constants-parseloc)ReferenceParser/constants/parseLoc
 Location to store output JSON file and reference collection maps.
 
 ```typescript
@@ -126,7 +56,6 @@ export const parseLoc = "duly-noted";
 
 ```typescript
 export class ReferenceParser implements IReferenceParser {
-    files: string[];
     rootCollection: IReferenceCollection;
     anchorRegExp: RegExp;
     commentPatterns: {}[];
@@ -138,7 +67,6 @@ export class ReferenceParser implements IReferenceParser {
 
 ```typescript
     constructor(config: IConfig, logLevel?: string) {
-        this.files = config.files;
         this.rootCollection = new ReferenceCollection(parseLoc, logLevel);
         this.anchorRegExp = new RegExp(config.anchorRegExp);
 
@@ -156,10 +84,10 @@ export class ReferenceParser implements IReferenceParser {
 Parser all files for anchors - produce a [interfaces/IReferenceCollection](../.././ts/classes/referenceCollection.ts.md#user-content-interfaces-ireferencecollection)
 
 ```typescript
-    public parse(): Q.Promise<IReferenceCollection> {
+    public parse(files: string[]): Q.Promise<IReferenceCollection> {
         let that = this;
         return Q.Promise<IReferenceCollection>((resolve, reject) => {
-            logger.info("Starting parse actions for " + that.files.length + " files.");
+            logger.info("Starting parse actions for " + files.length + " files.");
 
 ```
  
@@ -170,13 +98,13 @@ Parser all files for anchors - produce a [interfaces/IReferenceCollection](../..
 
 ```typescript
             let parseActions = [];
-            for (let i = 0; i < that.files.length; i++) {
-                let fileName = that.files[i].split(".");
+            for (let i = 0; i < files.length; i++) {
+                let fileName = files[i].split(".");
                 let extension = fileName[fileName.length - 1];
                 if (extension === "md") {
-                    parseActions.push(that.parseAsMarkdown(that.files[i]));
+                    parseActions.push(that.parseAsMarkdown(files[i]));
                 } else {
-                    parseActions.push(that.parseFile(that.files[i]));
+                    parseActions.push(that.parseFile(files[i]));
                 }
             }
 
@@ -185,11 +113,15 @@ Parser all files for anchors - produce a [interfaces/IReferenceCollection](../..
 ```
  Once all parse actions are complete write our the files.
 ```typescript
-               
+
                 logger.debug("Saving out internalReferences.json & externalReferences.json");
                 writeFileSync(path.join(parseLoc, "internalReferences.json"), JSON.stringify(that.rootCollection), { flag: "w" });
                 writeFileSync(path.join(parseLoc, "externalReferences.json"), JSON.stringify(that.externalReferences), { flag: "w" });
                 resolve(that.rootCollection);
+            })
+            .catch((err) => {
+                logger.error(err.message + err.stack);
+                reject(err);
             });
         });
     }
@@ -208,10 +140,7 @@ When a file is markdown, we parse the whole thing.
             type: "markdown",
             lines: []
         };
-```
- Line numbering traditionally starts at 1
-```typescript
-        let lineNumber = 0;
+        let lineNumber = 0; // Line numbering traditionally starts at 1
         return Q.Promise((resolve, reject) => {
             lineReader.eachLine(fileName, (line, last) => {
                 let thisLine: ILine = {
@@ -219,10 +148,7 @@ When a file is markdown, we parse the whole thing.
                 };
 
                 file.lines.push(thisLine);
-```
- In Markdown all lines are considered comments
-```typescript
-                file.lines[lineNumber].comment = line;
+                file.lines[lineNumber].comment = line; // In Markdown all lines are considered comments
 
                 that.parseComment(file.lines[lineNumber].comment, fileName, lineNumber)
                 .then(() => {
@@ -234,6 +160,7 @@ When a file is markdown, we parse the whole thing.
                         })
                         .catch((err) => {
                             logger.fatal(err.message);
+                            reject(err);
                         });
                     }
                 });
@@ -270,7 +197,7 @@ Parse a file to a file map.
 ```
  Load comment RegEx based on file type
 ```typescript
-           
+
             if (that.commentPatterns[file.type]) {
                 logger.debug("Using comment patten for " + file.type);
                 commentRegExp = new RegExp(that.commentPatterns[file.type]["commentRegExp"]);
@@ -278,21 +205,21 @@ Parse a file to a file map.
 ```
  Set RegEx for open a long comment
 ```typescript
-               
+
                 if (that.commentPatterns[file.type]["longCommentOpenRegExp"]) longCommentOpenRegExp = new RegExp(that.commentPatterns[file.type]["longCommentOpenRegExp"]);
                 else longCommentOpenRegExp = undefined;
 
 ```
  Set RegEx for continues a long comment
 ```typescript
-               
+
                 if (that.commentPatterns[file.type]["longCommentLineRegExp"]) longCommentLineRegExp = new RegExp(that.commentPatterns[file.type]["longCommentLineRegExp"]);
                 else longCommentLineRegExp = undefined;
 
 ```
  Set RegEx for closes a long comment
 ```typescript
-               
+
                 if (that.commentPatterns[file.type]["longCommentCloseRegExp"]) longCommentCloseRegExp = new RegExp(that.commentPatterns[file.type]["longCommentCloseRegExp"]);
                 else longCommentLineRegExp = undefined;
             } else {
@@ -303,15 +230,11 @@ Parse a file to a file map.
                 longCommentCloseRegExp = new RegExp(that.commentPatterns["default"]["longCommentCloseRegExp"]);
             }
 
-```
- Line numbering traditionally starts at 1 (not 0)
-```typescript
-           
-            let lineNumber = 1;
+            let lineNumber = 0;
 ```
  Read each line of the file.
 ```typescript
-           
+
             lineReader.eachLine(fileName, (line, last) => {
 
                 let thisLine: ILine = {
@@ -322,7 +245,7 @@ Parse a file to a file map.
 ```
  Logic for long comments, either beginning, or already started.
 ```typescript
-               
+
                 let longCommentOpenMatch;
                 if (longCommentOpenRegExp) {
                     longCommentOpenMatch = XRegExp.exec(line, longCommentOpenRegExp, 0, false);
@@ -338,14 +261,14 @@ Parse a file to a file map.
 ```
  We are not inside a long comment - look for a regular comment.
 ```typescript
-               
+
                 if (!insideLongComment) {
                     let match = XRegExp.exec(line, commentRegExp, 0, false);
 
 ```
  Contains a tradition comment
 ```typescript
-                   
+
                     if (match) {
 
                         file.lines[lineNumber].comment = match[1];
@@ -361,13 +284,14 @@ Parse a file to a file map.
                                     })
                                     .catch((err) => {
                                         logger.fatal(err.message);
+                                        reject(err);
                                     });
                                 }
                             });
 ```
  This is not a comment (code only)
 ```typescript
-                   
+
                     } else {
                         file.lines[lineNumber].code = line;
                         if (last) {
@@ -378,13 +302,14 @@ Parse a file to a file map.
                             })
                             .catch((err) => {
                                 logger.fatal(err.message);
+                                reject(err);
                             });
                         }
                     }
 ```
  Inside a long comment - so the whole thing is a comment
 ```typescript
-               
+
                 } else {
 
                     file.lines[lineNumber].longComment = true;
@@ -396,17 +321,14 @@ Parse a file to a file map.
                         if (match && match[1]) {
                             file.lines[lineNumber].comment = match[1];
                         } else {
-```
- Blank Line inside long comment...
-```typescript
-                            file.lines[lineNumber].comment = "";
+                            file.lines[lineNumber].comment = ""; // Blank Line inside long comment...
                         }
                     }
 
 ```
  If this line contains a long comment closing symbol, then next line isn't long comment, and we can remove the closing tag
 ```typescript
-                   
+
                     if (XRegExp.exec(line, longCommentCloseRegExp, 0)) {
                         file.lines[lineNumber].comment = file.lines[lineNumber].comment.replace(longCommentCloseRegExp, "");
                         insideLongComment = false;
@@ -422,6 +344,7 @@ Parse a file to a file map.
                                 })
                                 .catch((err) => {
                                     logger.fatal(err.message);
+                                    reject(err);
                                 });
                         }
                     });
@@ -429,7 +352,7 @@ Parse a file to a file map.
 ```
  If this is the last line, then we can wrap things up.
 ```typescript
-                   
+
                     if (last) {
                         that.writeOutFile(file)
                         .then(() => {
@@ -438,6 +361,7 @@ Parse a file to a file map.
                         })
                         .catch((err) => {
                             logger.fatal(err.message);
+                            reject(err);
                         });
                     }
                 }
@@ -501,4 +425,80 @@ for the entire project.
         });
     };
 }
+
+```
+ <a name="referenceparser-example-output-reference-collection" id="referenceparser-example-output-reference-collection" ></a>[🔗](#user-content-referenceparser-example-output-reference-collection)ReferenceParser/example-output/reference-collection
+### Example output JSON file for references
+```json
+ {
+  "id": "duly-noted",
+  "anchors": [
+       {
+           "id": "license",
+           "line": 1,
+           "file": "./license.md"
+       },
+       ...
+   ],
+   "subcollections": [
+       {
+           "id": "Index",
+           "anchors": [
+               {
+                   "id": "main",
+                   "line": 0,
+                   "file": "./ts/index.ts"
+               },
+               {
+                   "id": "run",
+                   "line": 21,
+                   "file": "./ts/index.ts"
+               },
+               {
+                   "id": "getFiles",
+                   "line": 162,
+                   "file": "./ts/index.ts"
+               },
+               {
+                   "id": "deleteDir",
+                   "line": 175,
+                   "file": "./ts/index.ts"
+               }
+           ],
+           "subcollections": []
+       },
+       ...
+   }
+```
+
+<a name="referenceparser-example-output-code-map" id="referenceparser-example-output-code-map" ></a>[🔗](#user-content-referenceparser-example-output-code-map)ReferenceParser/example-output/code-map
+## Example Output JSON map for code file.
+```json
+{
+   "name": "./ts/index.ts",
+   "lines": [
+       ...
+       {
+           "number": 5,
+           "longComment": true,
+           "comment": "This is the entry file to Duly Noted, "
+       },
+       {
+           "number": 6,
+           "longComment": true,
+           "comment": "it contains function that launches from the Command Line"
+       },
+       {
+           "number": 7,
+           "longComment": true,
+           "comment": ""
+       },
+       {
+           "number": 8,
+           "code": "import {IConfig} from \"./classes/IConfig\";"
+       },
+       ...
+   ]
+}
+
 ```

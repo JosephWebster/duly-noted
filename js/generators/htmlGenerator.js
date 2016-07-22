@@ -27,8 +27,8 @@ var HtmlGenerator = (function () {
         var projectPathArray = __dirname.split("/");
         projectPathArray.pop();
         this.projectPath = projectPathArray.join("/");
-        this.template = handlebars.compile(fs_1.readFileSync(path.join(this.projectPath, "templates", "stacked.html")).toString());
-        this.indexTemplate = handlebars.compile(fs_1.readFileSync(path.join(this.projectPath, "templates", "index.html")).toString());
+        this.template = handlebars.compile(fs_1.readFileSync(path.join(__dirname, "../../bin/templates", "stacked.html")).toString());
+        this.indexTemplate = handlebars.compile(fs_1.readFileSync(path.join(__dirname, "../../bin/templates", "index.html")).toString());
         this.projectName = config.projectName;
         this.readme = config.readme;
         handlebars.registerHelper("md", this.markdownHelper);
@@ -105,9 +105,9 @@ var HtmlGenerator = (function () {
             return comment;
         }
         else {
-            var anchor = match[1].replace("/", "-").toLowerCase();
+            var anchor = match[1].replace(/\//g, "-").toLowerCase();
             var replacementText = '<a name="' + anchor + '" id="' + anchor + '" ></a>';
-            replacementText += "[🔗](#" + anchor + ")" + match[1];
+            replacementText += "[🔗](#" + anchor + ")";
             comment = comment.replace(match[0], replacementText);
             return this.replaceAnchors(comment, fileName, line, pos + match[0].length);
         }
@@ -121,10 +121,13 @@ var HtmlGenerator = (function () {
         }
         else {
             var tagArray = match[1].split("/");
-            var externalTag = _.findWhere(this.externalReferences, { anchor: tagArray[0] });
+            var externalTag = _.clone(_.findWhere(this.externalReferences, { anchor: tagArray[0] }));
             if (externalTag) {
-                logger.debug("found external link: " + match[1]);
-                var anchor = match[1].replace("/", "-").toLowerCase();
+                for (var i = 1; i < tagArray.length; i++) {
+                    externalTag.path = externalTag.path.replace("::", tagArray[i]);
+                }
+                logger.debug("found external link: " + externalTag.path);
+                var anchor = match[1].replace(/\//g, "-").toLowerCase();
                 comment = comment.replace(match[0], " [" + match[1] + "](" + externalTag.path + ") ");
                 return this.replaceLinks(comment, fileName, line, pos + match[0].length);
             }
@@ -135,7 +138,7 @@ var HtmlGenerator = (function () {
             }
             else {
                 logger.debug("found internal link: " + match[1] + " " + internalTag.path);
-                var anchor = match[1].replace("/", "-").toLowerCase();
+                var anchor = match[1].replace(/\//g, "-").toLowerCase();
                 comment = comment.replace(match[0], " [" + match[1] + "](" + linkPrefix + internalTag.path + ".md#" + anchor + ")");
             }
             return this.replaceLinks(comment, fileName, line, pos + match[0].length);
@@ -159,10 +162,10 @@ var HtmlGenerator = (function () {
             name_1.shift();
             name_1 = name_1.join("/");
             for (var x = 0; x < anchors.length; x++) {
-                var anchor = anchors[x].linkStub.replace("/", "-").toLowerCase();
+                var anchor = anchors[x].linkStub.replace(/\//g, "-").toLowerCase();
                 anchors[x].path = anchors[x].path + ".html#";
                 if (name_1 !== "") {
-                    anchors[x].path += name_1.replace("/", "-").toLowerCase() + "-";
+                    anchors[x].path += name_1.replace(/\//g, "-").toLowerCase() + "-";
                 }
                 anchors[x].path += anchor;
             }

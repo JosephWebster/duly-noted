@@ -29,7 +29,7 @@ let logger = log4js.getLogger("duly-noted::run");
  *      2. User's Config File (`duly-noted.json`)
  *      3. Defaults values (see @issue/3)
  * 2. get the files and pass those to the @ReferenceParser/parse
- * 3. output the reponse to either/both @HtmlGenerator or @MarkdownGenerator
+ * 3. output the reponse to either/both @HtmlGenerator/generate or @MarkdownGenerator/generate
  */
 export function run() {
     logger.info("Welcome to Duly Noted.");
@@ -57,7 +57,8 @@ export function run() {
     logger.setLevel(logLevel);
 
 
-    //### Init - copies example duly-noted.json
+    //!Index/init
+    //### Init - copies example duly-noted.json from @default-duly-noted-json
     if (program.init) {
         try {
             let config = JSON.parse(readFileSync("duly-noted.json").toString());
@@ -110,12 +111,29 @@ export function run() {
         getFiles.push(getFilesFromGlob(config.files[i]));
     }
 
+    // MarkdownGenerator Settings
+    if (typeof config.markdownGeneratorOptions === "undefined") {
+        logger.debug("loading default markdownGeneratorOptions");
+        config.markdownGeneratorOptions = defaults.markdownGeneratorOptions;
+    }
+
+    if (typeof config.markdownGeneratorOptions.gitHubHtmlAnchors === "undefined") {
+        logger.debug("loading default markdownGeneratorOptions.gitHubHtmlAnchors");
+        config.markdownGeneratorOptions.gitHubHtmlAnchors = defaults.markdownGeneratorOptions.gitHubHtmlAnchors;
+    }
+
+    if (typeof config.markdownGeneratorOptions.htmlAnchors === "undefined") {
+        logger.debug("loading default htmlAnchors");
+        config.markdownGeneratorOptions.htmlAnchors = defaults.markdownGeneratorOptions.htmlAnchors;
+    }
+
     logger.debug("Starting Reference Parsing.");
 
     // Run @Index/getFiles on each glob, wait for all actions.
     Q.all(getFiles)
         .then((results) => {
             let files = _.flatten(results);
+            logger.debug(files);
             let referenceParser = new ReferenceParser(config, logLevel);
 
             /**
@@ -123,7 +141,7 @@ export function run() {
              * The output of this will be a JSON map of the references for 
              * all of the files, along with line-by-line comment maps.
              */
-            referenceParser.parse()
+            referenceParser.parse(files)
                 .then((response) => {
 
                     /**
@@ -166,8 +184,11 @@ export function run() {
  */
 function getFilesFromGlob(globString: string): Q.Promise<string[]> {
     return Q.Promise<string[]>((resolve, reject) => {
-        glob(globString, (err, files: string[]) => {
+        glob(globString, {nodir: true}, (err, files: string[]) => {
             if (err) reject(err);
+            if (files.length === 0) {
+                logger.warn("No files found for '" + globString + "'");
+            }
             resolve(files);
         });
     });
